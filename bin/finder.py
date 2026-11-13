@@ -29,6 +29,9 @@ TABS = [
     {"id": "jump", "label": "Jump"},
 ]
 
+# Tabs whose rows are sent ranked for the search text, on a rozi that reports it.
+RANKED_TABS = {"files", "dirs"}
+
 # Shells whose prompt takes `cd -- 'path'` with POSIX single quoting.
 SHELLS = {"sh", "bash", "zsh", "fish", "dash", "ksh", "mksh", "ash"}
 
@@ -140,7 +143,10 @@ def git_paths(base: str) -> list[str] | None:
 
 
 def walk_paths(base: str, hidden: bool) -> tuple[list[str], list[str]]:
-    """Files and directories under `base`, nearest first, relative to it."""
+    """Files and directories under `base`, nearest first, relative to it.
+
+    A Git repository met on the way is listed by Git, so what it ignores stays out.
+    """
     files: list[str] = []
     dirs: list[str] = []
     queue = deque([""])
@@ -155,13 +161,18 @@ def walk_paths(base: str, hidden: bool) -> tuple[list[str], list[str]]:
                 continue
             path = os.path.join(relative, child.name)
             try:
-                if child.is_dir(follow_symlinks=False):
-                    dirs.append(path)
-                    queue.append(path)
-                else:
+                if not child.is_dir(follow_symlinks=False):
                     files.append(path)
+                    continue
             except OSError:
                 continue
+            dirs.append(path)
+            tracked = git_paths(child.path) if os.path.exists(os.path.join(child.path, ".git")) else None
+            if tracked is None:
+                queue.append(path)
+            else:
+                room = max(0, MAX_WALK - len(files) - len(dirs))
+                files.extend(os.path.join(path, inner) for inner in tracked[:room])
     return files, dirs
 
 
@@ -279,7 +290,11 @@ def is_subsequence(term: str, text: str) -> bool:
 
 
 def search(entries: list[Entry], query: str) -> list[Entry]:
-    """Entries matching every word of `query`: name matches first, then path, then fuzzy."""
+    """Entries matching every word of `query`, best first.
+
+    A name that is the query comes first, then names starting with it, names containing it, paths
+    containing it, and paths with its letters in order. Within one kind the given order holds.
+    """
     terms = query.lower().split()
     if not terms:
         return entries
@@ -287,15 +302,19 @@ def search(entries: list[Entry], query: str) -> list[Entry]:
     for position, entry in enumerate(entries):
         label = entry.label.lower()
         name = os.path.basename(label.rstrip("/"))
+        length = 0
         if all(term in name for term in terms):
-            rank = 0
+            if len(terms) == 1 and terms[0] in (name, name.rsplit(".", 1)[0]):
+                rank = 0
+            else:
+                rank = 1 if name.startswith(terms[0]) else 2
         elif all(term in label for term in terms):
-            rank = 1
+            rank = 3
         elif all(is_subsequence(term, label) for term in terms):
-            rank = 2
+            rank, length = 4, len(label)
         else:
             continue
-        ranked.append((rank, len(label) if rank else 0, position, entry))
+        ranked.append((rank, length, position, entry))
     ranked.sort(key=lambda item: item[:3])
     return [item[3] for item in ranked]
 
@@ -519,8 +538,9 @@ class Finder:
                 action = event.get("action")
                 query = event.get("query", event.get("input") if action == "search" else None)
                 if isinstance(query, str):
-                    # A tab that fits in the picker is already filtered there.
-                    if self.oversized(tab):
+                    # Files and directories are ranked here, whatever their number, so the best
+                    # match is first. The grouped tabs are short and keep their order.
+                    if tab in RANKED_TABS or self.oversized(tab):
                         answer: dict[str, object] = {"tab": tab, "rows": self.rows(tab, query)}
                         if "query_seq" in event:
                             # rozi drops an answer to text that has since changed.

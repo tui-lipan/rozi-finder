@@ -23,6 +23,9 @@ one Python command.
 - A picker snapshot holds 512 rows, so anything past the limit must stay reachable by searching:
   by answering `query` replies on a rozi with `pick-query-events`, and through the `search` action
   on one without.
+- Rows sent for search text are ranked best match first: rozi shows them in that order.
+- A repository met while walking a plain directory is listed with `git ls-files`, never walked,
+  so ignored files stay out.
 - Keep the command standard-library Python 3.10 with no third-party dependencies.
 - Keep `README.md` in sync with behavior, keys, settings, and `min_rozi`.
 - Bump `version` in `extension.toml` with every change users install: patch for a fix, minor for a

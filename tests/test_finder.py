@@ -83,6 +83,23 @@ class ListingTest(TempDirTest):
         files, _ = finder.tree_entries(str(self.root), False, hidden=True)
         self.assertEqual(sorted(entry.label for entry in files), [".cache/blob", "a.txt"])
 
+    def test_a_repository_inside_a_plain_directory_keeps_its_ignored_files_out(self) -> None:
+        project = self.root / "project"
+        project.mkdir()
+        git(project, "init", "-q")
+        write(project, ".gitignore", text="target/\n")
+        write(project, "src/main.rs")
+        write(project, "target/debug/app")
+        write(self.root, "notes.txt")
+
+        files, dirs = finder.tree_entries(str(self.root), False, hidden=False)
+
+        self.assertEqual(
+            sorted(entry.label for entry in files),
+            ["notes.txt", "project/.gitignore", "project/src/main.rs"],
+        )
+        self.assertEqual(sorted(entry.label for entry in dirs), [".", "project/", "project/src/"])
+
     def test_changes_are_grouped_and_a_rename_lists_only_its_new_path(self) -> None:
         git(self.root, "init", "-q")
         for name in ("keep.rs", "moved.rs", "staged.rs"):
@@ -126,12 +143,27 @@ class JumpTest(unittest.TestCase):
 
 
 class SearchTest(unittest.TestCase):
-    def test_name_matches_rank_before_path_matches_before_fuzzy_ones(self) -> None:
-        labels = ["src/api/mod.rs", "docs/a_p_i.md", "tests/api.rs", "src/store/mod.rs"]
+    def test_the_closest_name_ranks_first_and_ties_keep_their_order(self) -> None:
+        labels = [
+            "src/sidebar/tree.rs",
+            "tests/my_sidebar.rs",
+            "docs/s_i_d_e_bar.md",
+            "src/sidebar_tree.rs",
+            "docs/sidebar.md",
+            "src/sidebar/rows.rs",
+            "src/store/mod.rs",
+        ]
         entries = [finder.Entry("/r/" + label, label, False) for label in labels]
         self.assertEqual(
-            [entry.label for entry in finder.search(entries, "API")],
-            ["tests/api.rs", "src/api/mod.rs", "docs/a_p_i.md"],
+            [entry.label for entry in finder.search(entries, "SideBar")],
+            [
+                "docs/sidebar.md",  # the name itself
+                "src/sidebar_tree.rs",  # a name starting with it
+                "tests/my_sidebar.rs",  # a name containing it
+                "src/sidebar/tree.rs",  # paths containing it, in the order given
+                "src/sidebar/rows.rs",
+                "docs/s_i_d_e_bar.md",  # its letters in order
+            ],
         )
         self.assertEqual(
             [entry.label for entry in finder.search(entries, "store mod")],
@@ -326,8 +358,8 @@ class FinderTest(TempDirTest):
             self.finder(fake),
             {"query": "05", "query_seq": 1, "tab": "files"},
             {"query": "0516", "query_seq": 2, "tab": "files"},
-            # The directories fit in the picker, which filters them itself.
-            {"query": "pk", "tab": "dirs"},
+            # A grouped tab keeps its order, and the picker filters it.
+            {"query": "pk", "tab": "changed"},
             {"selected": last, "tab": "files"},
         )
 

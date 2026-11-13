@@ -39,7 +39,8 @@ filter, and switch tabs with `Tab` and `Shift+Tab`.
 | **Jump** | Directories elsewhere: where the session's other panes are, then zoxide's directories, most used first. |
 
 Outside a Git repository, Files and Directories list the pane's directory, nearest entries first,
-up to 50,000 of them, and Changed is empty.
+up to 50,000 of them, and Changed is empty. A repository inside that directory is listed the way
+Git lists it, so what it ignores, such as a build directory, stays out.
 
 | Key | Action |
 | --- | --- |
@@ -47,7 +48,7 @@ up to 50,000 of them, and Changed is empty.
 | `Ctrl+G` | Go there: `cd` to the directory, or to a file's directory. See [Going to a directory](#going-to-a-directory). |
 | `Ctrl+O` | Open: a file in your editor, a directory as a shell, each in a new pane. |
 | `Ctrl+Y` | Copy the absolute path. |
-| `Ctrl+F` | Search every entry. Shown only for a large tree on an older rozi; see [Large trees](#large-trees). |
+| `Ctrl+F` | Search every entry. Shown only for a large tree on an older rozi; see [Searching](#searching). |
 | `Esc` | Close the picker. |
 
 A typed path is relative to the pane's directory when it is inside the pane's directory or
@@ -80,16 +81,22 @@ on the prompt line, so start from an empty one.
 When anything else runs in the pane, such as an editor, an agent, or a shell this extension cannot
 quote for, nothing is typed into it. A new pane opens in that directory instead.
 
-### Large trees
+### Searching
+
+On Files and Directories, the best match is first: a name that is exactly what you typed, then
+names that start with it, names that contain it, paths that contain it, and paths that contain its
+letters in order. Several words must all match. Entries that match equally keep the tab's order,
+most recently changed first.
 
 A rozi picker holds 512 rows, so in a tree with more entries each tab starts with the 512 most
-recently changed. As you type, the tab is refilled with the best matches from the whole tree:
-names that contain every word you typed come first, then paths that do, then paths that contain
-the letters in order.
+recently changed, and typing brings in matches from the whole tree.
 
-That needs a rozi whose `rozi api describe` lists `pick-query-events`. On an older rozi, typing
-filters only the 512 rows shown. To reach the rest there, type what you are looking for and press
-`Ctrl+F`, then `Enter`; search with an empty field to get the recent entries back.
+Both need rozi 0.0.47 or newer, whose `rozi api describe` lists `pick-query-events`. On 0.0.47
+itself, rozi re-ranks the list a moment after each keystroke and the highlight can land partway
+down it; later versions keep the order and highlight the first row. On an older rozi, rozi ranks
+the matches, and typing filters only the 512 rows shown: to reach the rest, type what you are
+looking for and press `Ctrl+F`, then `Enter`. Search with an empty field to get the recent entries
+back.
 
 ## Settings
 
