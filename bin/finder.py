@@ -521,7 +521,11 @@ class Finder:
                 if isinstance(query, str):
                     # A tab that fits in the picker is already filtered there.
                     if self.oversized(tab):
-                        alive = send({"tab": tab, "rows": self.rows(tab, query)})
+                        answer: dict[str, object] = {"tab": tab, "rows": self.rows(tab, query)}
+                        if "query_seq" in event:
+                            # rozi drops an answer to text that has since changed.
+                            answer["query_seq"] = event["query_seq"]
+                        alive = send(answer)
                 elif action is not None or "selected" in event:
                     self.act(action, tab, event.get("selected"))
                     break

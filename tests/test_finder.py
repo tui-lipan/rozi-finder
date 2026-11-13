@@ -324,8 +324,8 @@ class FinderTest(TempDirTest):
 
         picker = self.serve(
             self.finder(fake),
-            {"query": "05", "tab": "files"},
-            {"query": "0516", "tab": "files"},
+            {"query": "05", "query_seq": 1, "tab": "files"},
+            {"query": "0516", "query_seq": 2, "tab": "files"},
             # The directories fit in the picker, which filters them itself.
             {"query": "pk", "tab": "dirs"},
             {"selected": last, "tab": "files"},
@@ -337,6 +337,7 @@ class FinderTest(TempDirTest):
         answers = later[3:]  # after the three other tabs' opening rows
         self.assertEqual({line["tab"] for line in answers}, {"files"})
         self.assertEqual([row["id"] for row in answers[-1]["rows"]], [last])
+        self.assertEqual(answers[-1]["query_seq"], 2)
         self.assertEqual(fake.sent(), [["send-text", "--target", "7", "pkg/mod_0516.py "]])
 
     def test_a_small_tree_offers_no_search_all(self) -> None:
