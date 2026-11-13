@@ -157,19 +157,24 @@ class TypedPathTest(unittest.TestCase):
 class FakeRozi:
     """Records every `rozi` call and answers `list-panes` with the given panes."""
 
-    def __init__(self, panes: list[dict[str, object]]) -> None:
+    def __init__(self, panes: list[dict[str, object]], capabilities: list[str] = []) -> None:
         self.panes = panes
+        self.capabilities = capabilities
         self.calls: list[list[str]] = []
 
     def __call__(self, argv, **_options):
         if argv[0] != finder.ROZI:
             return REAL_RUN(argv, **_options)
         self.calls.append(list(argv[1:]))
-        stdout = json.dumps({"ok": True, "data": self.panes}) if argv[1] == "list-panes" else ""
+        stdout = ""
+        if argv[1] == "list-panes":
+            stdout = json.dumps({"ok": True, "data": self.panes})
+        elif argv[1] == "api":
+            stdout = json.dumps({"capabilities": self.capabilities})
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
     def sent(self) -> list[list[str]]:
-        return [call for call in self.calls if call[0] not in {"list-panes", "pick"}]
+        return [call for call in self.calls if call[0] not in {"list-panes", "pick", "api"}]
 
 
 class FakePicker:
@@ -309,6 +314,29 @@ class FinderTest(TempDirTest):
         self.assertIn("search", [action["id"] for action in request["actions"]])
         self.assertEqual(picker.lines()[-1], {"tab": "files", "rows": [mock.ANY]})
         self.assertEqual(picker.lines()[-1]["rows"][0]["id"], last)
+        self.assertEqual(fake.sent(), [["send-text", "--target", "7", "pkg/mod_0516.py "]])
+
+    def test_a_rozi_that_reports_search_text_is_answered_with_matching_rows(self) -> None:
+        for index in range(finder.MAX_ROWS + 5):
+            write(self.root, f"pkg/mod_{index:04}.py", age=index)
+        last = str(self.root / f"pkg/mod_{finder.MAX_ROWS + 4:04}.py")
+        fake = FakeRozi([], capabilities=["pick-query-events"])
+
+        picker = self.serve(
+            self.finder(fake),
+            {"query": "05", "tab": "files"},
+            {"query": "0516", "tab": "files"},
+            # The directories fit in the picker, which filters them itself.
+            {"query": "pk", "tab": "dirs"},
+            {"selected": last, "tab": "files"},
+        )
+
+        request, *later = picker.lines()
+        self.assertIs(request["report_query"], True)
+        self.assertNotIn("search", [action["id"] for action in request["actions"]])
+        answers = later[3:]  # after the three other tabs' opening rows
+        self.assertEqual({line["tab"] for line in answers}, {"files"})
+        self.assertEqual([row["id"] for row in answers[-1]["rows"]], [last])
         self.assertEqual(fake.sent(), [["send-text", "--target", "7", "pkg/mod_0516.py "]])
 
     def test_a_small_tree_offers_no_search_all(self) -> None:

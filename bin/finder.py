@@ -5,17 +5,19 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
 
 ROZI = os.environ.get("ROZI_BIN", "rozi")
 
-# rozi keeps at most this many rows of a snapshot; the rest are reached with "search all".
+# rozi keeps at most this many rows of a snapshot; the rest are reached by searching.
 MAX_ROWS = 512
 # Entries read from a directory tree that is not a Git repository.
 MAX_WALK = 50_000
@@ -88,6 +90,16 @@ def rozi(*args: str) -> bool:
 
 def notify(message: str, error: bool = False) -> None:
     rozi("notify", message, "--title", "Finder", *(["--level", "error"] if error else []))
+
+
+def reports_search_text() -> bool:
+    """Whether this rozi's picker says what is typed, so a long list can follow the search."""
+    try:
+        description = json.loads(run([ROZI, "api", "describe"]) or "")
+    except json.JSONDecodeError:
+        return False
+    capabilities = description.get("capabilities") if isinstance(description, dict) else None
+    return isinstance(capabilities, list) and "pick-query-events" in capabilities
 
 
 def repository_root(cwd: str) -> str | None:
@@ -339,13 +351,16 @@ class Finder:
             "jump": jump_entries(self.panes, cwd),
         }
         self.tab = tab if tab in self.entries else "files"
-        # What each tab last sent, so a reply's row ID resolves to the entry on screen.
-        self.shown: dict[str, dict[str, Entry]] = {}
+        self.by_path = {
+            tab: {entry.path: entry for entry in entries} for tab, entries in self.entries.items()
+        }
+        self.live = reports_search_text()
+
+    def oversized(self, tab: str) -> bool:
+        return len(self.entries[tab]) > MAX_ROWS
 
     def rows(self, tab: str, query: str = "") -> list[dict[str, object]]:
-        entries = search(self.entries[tab], query)[:MAX_ROWS]
-        self.shown[tab] = {entry.path: entry for entry in entries}
-        return [entry.row() for entry in entries]
+        return [entry.row() for entry in search(self.entries[tab], query)[:MAX_ROWS]]
 
     def request(self) -> dict[str, object]:
         request: dict[str, object] = {
@@ -361,7 +376,10 @@ class Finder:
                 {"id": "copy", "key": "ctrl-y", "label": "copy", "close": True},
             ],
         }
-        if any(len(entries) > MAX_ROWS for entries in self.entries.values()):
+        if self.live:
+            request["report_query"] = True
+        elif any(self.oversized(tab) for tab in self.entries):
+            # An older rozi does not say what is typed: offer the whole tree behind a key.
             request["actions"].append(
                 {
                     "id": "search",
@@ -423,7 +441,7 @@ class Finder:
         notify(f"Copied {home_relative(entry.path)}")
 
     def act(self, action: str | None, tab: str, selected: object) -> None:
-        entry = self.shown.get(tab, {}).get(selected) if isinstance(selected, str) else None
+        entry = self.by_path[tab].get(selected) if isinstance(selected, str) else None
         if entry is None:
             return
         if action is None:
@@ -456,29 +474,54 @@ class Finder:
             except (BrokenPipeError, OSError, ValueError):
                 return False
 
+        # Replies are read on a thread so that search text typed faster than it can be answered
+        # is answered once, for the newest text.
+        replies: queue.Queue[dict[str, object] | None] = queue.Queue()
+
+        def read_replies() -> None:
+            for line in process.stdout:
+                try:
+                    reply = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                replies.put(reply if isinstance(reply, dict) else None)
+            replies.put(None)
+
+        threading.Thread(target=read_replies, daemon=True).start()
+        waiting: list[dict[str, object] | None] = []
+
+        def next_reply() -> dict[str, object] | None:
+            reply = waiting.pop() if waiting else replies.get()
+            while reply is not None and "query" in reply:
+                try:
+                    later = replies.get_nowait()
+                except queue.Empty:
+                    break
+                if later is not None and "query" in later and later.get("tab") == reply.get("tab"):
+                    reply = later
+                else:
+                    waiting.append(later)
+                    break
+            return reply
+
         try:
             alive = send(self.request())
             for tab in self.entries:
                 if alive and tab != self.tab:
                     alive = send({"tab": tab, "rows": self.rows(tab)})
             while alive:
-                line = process.stdout.readline()
-                if not line:
-                    break
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if not isinstance(event, dict) or event.get("cancelled"):
+                event = next_reply()
+                if event is None or event.get("cancelled"):
                     break
                 tab = event.get("tab")
                 if tab not in self.entries:
                     continue
                 action = event.get("action")
-                if action == "search":
-                    query = event.get("input")
-                    rows = self.rows(tab, query if isinstance(query, str) else "")
-                    alive = send({"tab": tab, "rows": rows})
+                query = event.get("query", event.get("input") if action == "search" else None)
+                if isinstance(query, str):
+                    # A tab that fits in the picker is already filtered there.
+                    if self.oversized(tab):
+                        alive = send({"tab": tab, "rows": self.rows(tab, query)})
                 elif action is not None or "selected" in event:
                     self.act(action, tab, event.get("selected"))
                     break

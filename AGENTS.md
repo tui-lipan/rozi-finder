@@ -14,14 +14,15 @@ one Python command.
 
 ## Workflow rules
 
-- Use only public interfaces: `git`, `zoxide query`, and rozi's documented CLI (`pick`,
+- Use only public interfaces: `git`, `zoxide query`, and rozi's documented CLI (`api describe`, `pick`,
   `list-panes`, `send-text`, `send-keys`, `split`, `notify`) and extension environment.
 - Never type a command into a pane unless `list-panes` shows a supported shell, or no foreground
   program, in it. Open a new pane instead.
 - Everything typed into a pane goes through `shlex.quote`. A path never composes a command line
   any other way.
-- A picker snapshot holds 512 rows and rozi does not report what is typed, so anything past the
-  limit must stay reachable through the `search` action.
+- A picker snapshot holds 512 rows, so anything past the limit must stay reachable by searching:
+  by answering `query` replies on a rozi with `pick-query-events`, and through the `search` action
+  on one without.
 - Keep the command standard-library Python 3.10 with no third-party dependencies.
 - Keep `README.md` in sync with behavior, keys, settings, and `min_rozi`.
 - Bump `version` in `extension.toml` with every change users install: patch for a fix, minor for a

@@ -47,7 +47,7 @@ up to 50,000 of them, and Changed is empty.
 | `Ctrl+G` | Go there: `cd` to the directory, or to a file's directory. See [Going to a directory](#going-to-a-directory). |
 | `Ctrl+O` | Open: a file in your editor, a directory as a shell, each in a new pane. |
 | `Ctrl+Y` | Copy the absolute path. |
-| `Ctrl+F` | Search every entry. Shown only for a large tree; see [Large trees](#large-trees). |
+| `Ctrl+F` | Search every entry. Shown only for a large tree on an older rozi; see [Large trees](#large-trees). |
 | `Esc` | Close the picker. |
 
 A typed path is relative to the pane's directory when it is inside the pane's directory or
@@ -82,11 +82,14 @@ quote for, nothing is typed into it. A new pane opens in that directory instead.
 
 ### Large trees
 
-A rozi picker holds 512 rows. In a tree with more entries, each tab shows the 512 most recently
-changed, and typing filters those. To reach the rest, type what you are looking for and press
-`Ctrl+F`, then `Enter`: the tab is refilled with the best matches from the whole tree. Names that
-contain every word you typed come first, then paths that do, then paths that contain the letters in
-order. Search with an empty field to get the recent entries back.
+A rozi picker holds 512 rows, so in a tree with more entries each tab starts with the 512 most
+recently changed. As you type, the tab is refilled with the best matches from the whole tree:
+names that contain every word you typed come first, then paths that do, then paths that contain
+the letters in order.
+
+That needs a rozi whose `rozi api describe` lists `pick-query-events`. On an older rozi, typing
+filters only the 512 rows shown. To reach the rest there, type what you are looking for and press
+`Ctrl+F`, then `Enter`; search with an empty field to get the recent entries back.
 
 ## Settings
 
