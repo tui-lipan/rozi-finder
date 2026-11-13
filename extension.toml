@@ -1,0 +1,41 @@
+[extension]
+id = "finder"
+title = "Finder"
+description = "Find a file or directory in a picker, then insert its path, cd to it, open it, or copy it"
+version = "0.1.0"
+api = 1
+min_rozi = "0.0.46"
+platforms = ["linux", "macos"]
+homepage = "https://github.com/tui-lipan/rozi-finder"
+screenshots = ["docs/screenshot.webp"]
+
+# Defaults. Override them in [extensions.finder] in config.toml.
+[settings]
+# "repository" searches the whole Git repository the pane is in; "directory" only the pane's
+# directory. Outside a repository both search the pane's directory.
+root = { default = "repository", choices = ["repository", "directory"] }
+# Outside a Git repository, also list entries whose names start with a dot.
+hidden = false
+# Command that opens a file, such as "nvim" or "code -w". Empty uses $VISUAL, then $EDITOR.
+editor = ""
+
+[[commands]]
+id = "files"
+label = "Find files…"
+exec = ["python3", "{extension_dir}/bin/finder.py", "files"]
+key = "f"
+
+[[commands]]
+id = "dirs"
+label = "Find directories…"
+exec = ["python3", "{extension_dir}/bin/finder.py", "dirs"]
+
+[[commands]]
+id = "changed"
+label = "Find changed files…"
+exec = ["python3", "{extension_dir}/bin/finder.py", "changed"]
+
+[[commands]]
+id = "jump"
+label = "Jump to directory…"
+exec = ["python3", "{extension_dir}/bin/finder.py", "jump"]
